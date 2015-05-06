@@ -1,4 +1,4 @@
-package ActiveHttpReverseProxy
+package ActiveHttpProxy
 
 import (
 	//"strings"
@@ -7,11 +7,11 @@ import (
 
 func Test_getAdmin(t *testing.T) {
 
-	arm := &ArRouteMap{}
-	arm.Routes = make(map[string]*ArRoute)
-	b := arm.RoadRoute("sfasf")
-	if !b {
-		t.Error("error")
-	}
+	//	arm := &ArRouteMap{}
+	//	arm.Routes = make(map[string]*ArRoute)
+	//	b := arm.RoadRoute("sfasf")
+	//	if !b {
+	//		t.Error("error")
+	//	}
 
 }

@@ -1,19 +1,20 @@
-package ActiveHttpReverseProxy
+package ActiveHttpProxy //Reverse Porxy
 
 import (
 	log "RollLoger"
 	"WorkPool"
 	"encoding/json"
+	//	"fmt"
 	"net/http"
-	//"strconv"
-	"runtime"
+	//	"runtime"
+	"strconv"
 	"sync"
-	"time"
+	//"time"
 )
 
 type ArRouteLoad struct {
 	MaxVer int64
-	Routes []ArRoute
+	Routes []*ArRoute
 }
 
 type ArRoute struct {
@@ -30,27 +31,21 @@ type ArRoute struct {
 	ProxyWorks  *WorkPool.WPool
 }
 
-//func SetRoute(r *ArRoute) *ArRoute {
-//	arr := new(ArRoute)
-//	arr.Encrypt = r.Encrypt
-//	arr.IpList = r.IpList
-//	arr.MaxConnects = r.MaxConnects
-//	arr.ProxyToUrl = r.ProxyToUrl
-//	arr.PublishID = r.PublishID
-//	arr.ReqUrl = r.ReqUrl
-//	arr.SecretType = r.SecretType
-//	arr.TimeOut = r.TimeOut
-//	arr.Ver = r.Ver
-//	return arr
-//}
+func (ar *ArRoute) ToJson() string {
+	r, err := json.Marshal(ar)
+	if err != nil {
+		log.Error("Marshal ArRoute To json failed;")
+	}
+	return string(r)
+}
 
 func (ar *ArRoute) InitProxyWorks() {
-	ar.ProxyWorks = WorkPool.NewWorkPool(ar.Name, ar.MaxConnects, ar.TimeOut*time.Millisecond)
-	ar.ProxyWorks.Start()
+	ar.ProxyWorks = WorkPool.NewWorkPool(ar.Name)
+	ar.ProxyWorks.SetMax(ar.MaxConnects)
 }
 
 func (ar *ArRoute) CloseProxyWorks() {
-	ar.ProxyWorks.Stop()
+	ar.ProxyWorks.SetMax(0)
 }
 
 type ArRouteMap struct {
@@ -59,12 +54,20 @@ type ArRouteMap struct {
 	MaxVer int64
 }
 
+func NewArRouteMap() *ArRouteMap {
+	service_routes := &ArRouteMap{}
+	service_routes.Routes = make(map[string]*ArRoute)
+	service_routes.MaxVer = 0
+	return service_routes
+}
+
+//查找路由map找到对应的目的地址
 func (arm *ArRouteMap) MatchRoute(url string) (*ArRoute, bool) {
 	arm.mu.Lock()
 	defer arm.mu.Unlock()
 	r, ok := arm.Routes[url]
 	if ok {
-		return copyRoute(r), true
+		return r, true
 	} else {
 		return nil, false
 	}
@@ -88,18 +91,45 @@ func (arm *ArRouteMap) RoadRoute(jsonstr string) (result int) {
 	}
 
 	for _, newroute := range newAroute.Routes { //检查路由信息并进行替换
+
 		oldroute, ok := arm.Routes[newroute.ReqUrl]
 		if ok {
 			if newroute.Ver > oldroute.Ver {
-				go oldroute.CloseProxyWorks() //关闭旧有的线程池
-				oldroute = &newroute
-				oldroute.InitProxyWorks()
-				oldroute.ProxyWorks.Start() //启动工作线程池
+				//更新属性
+				oldroute.Encrypt = newroute.Encrypt
+				oldroute.IpList = newroute.IpList
+				oldroute.Name = newroute.Name
+				oldroute.ProxyToUrl = newroute.ProxyToUrl
+				oldroute.PublishID = newroute.PublishID
+				oldroute.ReqUrl = newroute.ReqUrl
+				oldroute.SecretType = newroute.SecretType
+				oldroute.TimeOut = newroute.TimeOut
+				oldroute.Ver = newroute.Ver
+				//调整连接数
+				err = oldroute.ProxyWorks.SetMax(newroute.MaxConnects)
+				if err == nil {
+					oldroute.MaxConnects = newroute.MaxConnects
+				} else {
+					log.Error("连接调整失败old:", strconv.Itoa(oldroute.MaxConnects), " new:", strconv.Itoa(newroute.MaxConnects))
+				}
 				result++
+				log.Info("update route to ", oldroute.ToJson())
 			}
+
 		} else {
-			arm.Routes[newroute.ReqUrl] = &newroute
+			newroute.ProxyWorks = WorkPool.NewWorkPool(newroute.Name)
+			err = newroute.ProxyWorks.SetMax(newroute.MaxConnects)
+			if err != nil {
+				//连接可能过大
+				newroute.MaxConnects = 0
+				log.Error("初始化连接失败 max:", strconv.Itoa(newroute.MaxConnects))
+			}
+
+			arm.Routes[newroute.ReqUrl] = newroute
+
 			result++
+			log.Info("create route to ", newroute.ToJson())
+
 		}
 	}
 
@@ -115,6 +145,8 @@ type ArProxy struct {
 func NewArProxy(port string) *ArProxy {
 	arp := &ArProxy{}
 	arp.port = port
+	arp.service_queue = make(map[int]chan byte)
+	arp.service_routes = NewArRouteMap()
 	return arp
 }
 
@@ -125,15 +157,11 @@ func (arp *ArProxy) HandleService(w http.ResponseWriter, r *http.Request) {
 }
 
 func (arp *ArProxy) Start() {
-	arp.service_queue = make(map[int]chan byte)
-	arp.service_routes = &ArRouteMap{}
-	arp.service_routes.Routes = make(map[string]*ArRoute)
-
 	http.HandleFunc("/", arp.HandleService)       //设置访问的路由
 	err := http.ListenAndServe(":"+arp.port, nil) //设置监听的端口
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Info("start listen ")
+	log.Info("start listen port:", arp.port)
 }
