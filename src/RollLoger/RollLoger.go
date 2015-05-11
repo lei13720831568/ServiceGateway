@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"winsvc/osext"
 )
 
 const (
@@ -18,7 +19,15 @@ const (
 	fatalStr = "[Fatal]- "
 )
 
-var rLogger *RollLog = NewRollLogger(1024*5, "log", "./log")
+func init() {
+	homedir, err := osext.ExecutableFolder()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	rLogger = NewRollLogger(1024*5, "log", homedir+"/log")
+}
+
+var rLogger *RollLog
 
 func NewRollLogger(MaxSize int64, FileName string, FileDirPath string) *RollLog {
 	_rLogger := new(RollLog)

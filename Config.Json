@@ -1,1 +1,1 @@
-{"DBConnStr":"driver={sql server};server=192.168.1.100;port=1433;uid=sa;pwd=654321;database=ADC3CoreDB"}
+{"DBConnStr":"driver={sql server};server=192.168.1.100;port=1433;uid=sa;pwd=654321;database=ADC3CoreDB","SelfNode":{"ip":"192.168.1.129","port":"12001"}}

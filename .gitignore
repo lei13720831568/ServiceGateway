@@ -72,3 +72,5 @@ $RECYCLE.BIN/
 *.log
 seelog.xml
 *.hgignore
+*.exe~
+log/log_20150508.log.bak

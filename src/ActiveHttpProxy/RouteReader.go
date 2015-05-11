@@ -44,8 +44,9 @@ func (p *ReaderFromDB) Read() (*ArRouteLoad, error) {
 	defer row.Close()
 	for row.Next() {
 		ar := &ArRoute{}
-		if err := row.Scan(&ar.PublishID, &ar.Name, &ar.ReqUrl, &ar.ProxyToUrl, &ar.IpList, &ar.SecretType, &ar.Encrypt, &ar.MaxConnects, &ar.TimeOut, &ar.Ver, &ar.Status); err == nil {
+		if err := row.Scan(&ar.PublishID, &ar.Name, &ar.ReqUrl, &ar.ProxyToUrl, &ar.IpList, &ar.SecretType, &ar.Encrypt, &ar.MaxConnects, &ar.TimeOut, &ar.Ver, &ar.Status, &ar.SecKey); err == nil {
 			arrl.Routes = append(arrl.Routes, ar)
+			arrl.MaxVer = ar.Ver
 		} else {
 			log.Error("read fields Error", err.Error())
 			return nil, err
