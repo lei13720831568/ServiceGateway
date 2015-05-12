@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"strings"
 	//	"strings"
 	//	"errors"
 	"net"
@@ -43,6 +44,7 @@ type ArRoute struct {
 	Ver         int64
 	Status      int
 	SecKey      string
+	MatchMode   string // MatchDir ,MatchFile
 	ProxyWorks  *WorkPool.WPool
 }
 
@@ -78,13 +80,13 @@ func NewArRouteMap() *ArRouteMap {
 	return service_routes
 }
 
-//查找路由map找到对应的目的地址
+//查找路由map找到 完全匹配对应的目的地址
 func (arm *ArRouteMap) MatchRoute(url string) (*ArRoute, bool) {
 	arm.mu.Lock()
 	defer arm.mu.Unlock()
 
-	r, ok := arm.CacheRoutes[url]
-	if ok { //找到缓存按缓存处理
+	r, ok := arm.CacheRoutes[url] //优先查找缓存
+	if ok {                       //找到缓存按缓存处理
 		return r, true
 	} else { //找不到
 		ar, _, find := arm.FindRouteByReqUrl(url)
@@ -93,10 +95,25 @@ func (arm *ArRouteMap) MatchRoute(url string) (*ArRoute, bool) {
 			arm.CacheRoutes[url] = ar
 			return ar, true
 		} else {
+			ar, find = arm.MatchRouteByDir(url)
+			if find {
+				return ar, true
+			}
 			return nil, false
 		}
 	}
 
+}
+
+//查找目录匹配
+func (arm *ArRouteMap) MatchRouteByDir(url string) (*ArRoute, bool) {
+	ar, _, find := arm.FindRouteByReqDir(url)
+	if find {
+		arm.CacheRoutes[url] = ar //加入缓存
+		return ar, true
+	} else {
+		return nil, false
+	}
 }
 
 func (arm *ArRouteMap) FindRouteByReqUrl(r string) (*ArRoute, int, bool) {
@@ -107,6 +124,16 @@ func (arm *ArRouteMap) FindRouteByReqUrl(r string) (*ArRoute, int, bool) {
 		}
 	}
 
+	return nil, 0, false
+}
+
+//根据目录前缀匹配
+func (arm *ArRouteMap) FindRouteByReqDir(r string) (*ArRoute, int, bool) {
+	for i, arr := range arm.Routes {
+		if strings.Index(r, arr.ReqUrl) == 0 {
+			return arr, i, true
+		}
+	}
 	return nil, 0, false
 }
 
@@ -213,6 +240,7 @@ type ProxyWork struct {
 	Transport *http.Transport
 	DestUrl   string
 	rspStatus int
+	Timeout   int64
 }
 
 func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string) *ProxyWork {
@@ -223,6 +251,10 @@ func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string)
 	pw.Transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
 
 	return pw
+}
+
+func (pw *ProxyWork) dialTimeout(network, addr string) (net.Conn, error) {
+	return net.DialTimeout(network, addr, time.Duration(pw.Timeout)*time.Millisecond)
 }
 
 func (pw *ProxyWork) PHandle() error {
@@ -238,11 +270,13 @@ func (pw *ProxyWork) PHandle() error {
 		if e, ok := err.(net.Error); ok && e.Timeout() {
 			pw.rspStatus = 408 //超时
 		} else {
+			log.Debug("503 ", err.Error())
 			pw.rspStatus = 503 //其他错误
 		}
 		return err
 	} else {
 		defer resp.Body.Close()
+		resp.Header
 		for k, v := range resp.Header {
 			for _, vv := range v {
 				pw.w.Header().Add(k, vv)
@@ -341,23 +375,31 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 	rurl := r.URL.Path
 	ar, ok := arp.service_routes.MatchRoute(r.URL.Path)
 	if ok {
-		log.Debug("match request ", r.URL.Path, " to ", ar.ProxyToUrl)
+		log.Debug("match request ", r.URL.Path, " ", ar.ReqUrl)
 
-		err := arp.checkRequest(r, ar)
+		err := arp.checkRequest(r, ar) //安全检查
 		if err != nil {
 			w.Write([]byte("Secret Error " + err.Error()))
 			log.Info("route to err:", ar.Name, "$$", rurl, "$$", "", "$$", "400")
 			return
 		}
 
-		pw := NewProxyWork(w, r, ar.ProxyToUrl)
+		var desturl string
+		if ar.MatchMode == "MatchDir" { //发现是目录匹配,进行路径处理
+			desturl = strings.Replace(rurl, ar.ReqUrl, ar.ProxyToUrl, -1)
+		} else {
+			desturl = ar.ProxyToUrl
+		}
+
+		pw := NewProxyWork(w, r, desturl)
+		pw.Timeout = ar.TimeOut
 		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut/2))
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprintf(w, "work Error: %v", err)
-			log.Info("route to err:", ar.Name, "$$", rurl, "$$", ar.ProxyToUrl, "$$", strconv.Itoa(pw.rspStatus))
+			log.Info("route to err:", ar.Name, "$$", rurl, "$$", desturl, "$$", strconv.Itoa(pw.rspStatus))
 		} else {
-			log.Info("route to :", ar.Name, "$$", rurl, "$$", ar.ProxyToUrl, "$$", strconv.Itoa(pw.rspStatus))
+			log.Info("route to :", ar.Name, "$$", rurl, "$$", desturl, "$$", strconv.Itoa(pw.rspStatus))
 		}
 	} else {
 		http.ServeFile(w, r, "NotFindService.html")
