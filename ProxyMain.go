@@ -28,15 +28,17 @@ func (p *program) run() error {
 		return err
 	}
 
-	r := &ActiveHttpProxy.ReaderFromDB{appconfig.DBConnStr}
+	r := ActiveHttpProxy.NewReaderFromDB(appconfig.DBConnStr)
+	dl := ActiveHttpProxy.NewServiceGatewayLogger(appconfig.LogDBConnStr)
 
-	arp := ActiveHttpProxy.NewArProxy(appconfig.SelfNode.Port, r)
+	arp := ActiveHttpProxy.NewArProxy(appconfig.SelfNode.Port, r, dl)
 	arp.Start()
 
 	for {
 		select {
 		case <-p.exit:
 			arp.Stop()
+			dl.StopLogToDB()
 			return nil
 		}
 	}

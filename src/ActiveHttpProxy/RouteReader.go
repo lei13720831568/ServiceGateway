@@ -16,18 +16,28 @@ type RouteReader interface {
 
 type ReaderFromDB struct {
 	Dbconnstr string
+	conn      *sql.DB
+}
+
+func NewReaderFromDB(connstr string) *ReaderFromDB {
+	r := &ReaderFromDB{}
+	r.Dbconnstr = connstr
+	return r
 }
 
 func (p *ReaderFromDB) Read() (*ArRouteLoad, error) {
-	connstr := p.Dbconnstr //"driver={sql server};server=192.168.1.100;port=1433;uid=sa;pwd=654321;database=ADC3CoreDB"
-	conn, err := sql.Open("odbc", connstr)
+	var err error
+
+	p.conn, err = sql.Open("odbc", p.Dbconnstr)
 
 	if err != nil {
 		log.Error("Connecting Error ", err.Error())
 		return nil, err
 	}
-	defer conn.Close()
-	stmt, err := conn.Prepare("select * from vwService_info order by MatchMode desc,ReqUrl")
+
+	defer p.conn.Close()
+
+	stmt, err := p.conn.Prepare("select * from vwService_info order by MatchMode desc,ReqUrl")
 	if err != nil {
 		log.Error("Prepare Query Error ", err.Error())
 		return nil, err
@@ -44,7 +54,7 @@ func (p *ReaderFromDB) Read() (*ArRouteLoad, error) {
 	defer row.Close()
 	for row.Next() {
 		ar := &ArRoute{}
-		if err := row.Scan(&ar.PublishID, &ar.Name, &ar.ReqUrl, &ar.ProxyToUrl, &ar.IpList, &ar.SecretType, &ar.Encrypt, &ar.MaxConnects, &ar.TimeOut, &ar.Ver, &ar.Status, &ar.SecKey, &ar.MatchMode); err == nil {
+		if err := row.Scan(&ar.PublishID, &ar.Name, &ar.ReqUrl, &ar.ProxyToUrl, &ar.IpList, &ar.SecretType, &ar.Encrypt, &ar.MaxConnects, &ar.TimeOut, &ar.Ver, &ar.Status, &ar.SecKey, &ar.MatchMode, &ar.WaitTimeOut); err == nil {
 			arrl.Routes = append(arrl.Routes, ar)
 			arrl.MaxVer = ar.Ver
 		} else {

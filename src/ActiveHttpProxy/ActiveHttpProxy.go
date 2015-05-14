@@ -40,11 +40,12 @@ type ArRoute struct {
 	SecretType  string
 	Encrypt     string
 	MaxConnects int
-	TimeOut     int64 //单位毫秒
+	TimeOut     int64 //连接排队超时单位毫秒
 	Ver         int64
 	Status      int
 	SecKey      string
 	MatchMode   string // MatchDir ,MatchFile
+	WaitTimeOut int64
 	ProxyWorks  *WorkPool.WPool
 }
 
@@ -249,7 +250,7 @@ func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string)
 	pw.DestUrl = desturl
 	pw.r = req
 	pw.Transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
-
+	pw.Transport.Dial = pw.dialTimeout
 	return pw
 }
 
@@ -276,7 +277,6 @@ func (pw *ProxyWork) PHandle() error {
 		return err
 	} else {
 		defer resp.Body.Close()
-		resp.Header
 		for k, v := range resp.Header {
 			for _, vv := range v {
 				pw.w.Header().Add(k, vv)
@@ -297,15 +297,17 @@ type ArProxy struct {
 	wa             *Watcher
 	ln             *StoppableListener.StoppableListener
 	ch             chan bool //关闭用
+	dbLogger       *ServiceGatewayLogger
 }
 
-func NewArProxy(port string, r RouteReader) *ArProxy {
+func NewArProxy(port string, r RouteReader, dlogger *ServiceGatewayLogger) *ArProxy {
 	arp := &ArProxy{}
 	arp.port = port
 	arp.service_queue = make(map[int]chan byte)
 	arp.service_routes = NewArRouteMap()
 	arp.wa = NewWatcher(r)
 	arp.ch = make(chan bool)
+	arp.dbLogger = dlogger
 	return arp
 }
 
@@ -373,6 +375,9 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 
 	log.Debug("receive request ", r.URL.Path)
 	rurl := r.URL.Path
+	rhost := r.URL.Host
+	begintime := time.Now()
+
 	ar, ok := arp.service_routes.MatchRoute(r.URL.Path)
 	if ok {
 		log.Debug("match request ", r.URL.Path, " ", ar.ReqUrl)
@@ -381,29 +386,33 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.Write([]byte("Secret Error " + err.Error()))
 			log.Info("route to err:", ar.Name, "$$", rurl, "$$", "", "$$", "400")
+			arp.dbLogger.AddLog(ar, rurl, "", begintime, time.Now(), 404, err.Error(), rhost)
 			return
 		}
 
 		var desturl string
 		if ar.MatchMode == "MatchDir" { //发现是目录匹配,进行路径处理
-			desturl = strings.Replace(rurl, ar.ReqUrl, ar.ProxyToUrl, -1)
+
+			desturl = strings.Replace(rurl, ar.ReqUrl, ar.ProxyToUrl, 1)
 		} else {
 			desturl = ar.ProxyToUrl
 		}
 
 		pw := NewProxyWork(w, r, desturl)
-		pw.Timeout = ar.TimeOut
-		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut/2))
+		pw.Timeout = ar.WaitTimeOut
+		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut))
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprintf(w, "work Error: %v", err)
 			log.Info("route to err:", ar.Name, "$$", rurl, "$$", desturl, "$$", strconv.Itoa(pw.rspStatus))
+			arp.dbLogger.AddLog(ar, rurl, desturl, begintime, time.Now(), pw.rspStatus, err.Error(), rhost)
 		} else {
-			log.Info("route to :", ar.Name, "$$", rurl, "$$", desturl, "$$", strconv.Itoa(pw.rspStatus))
+			arp.dbLogger.AddLog(ar, rurl, desturl, begintime, time.Now(), pw.rspStatus, "", rhost)
 		}
 	} else {
 		http.ServeFile(w, r, "NotFindService.html")
 		log.Info("route Match:", "", "$$", r.URL.Path, "$$", "", "$$", "404")
+		arp.dbLogger.AddLog(nil, rurl, "NotFindService.html", begintime, time.Now(), 404, "", rhost)
 	}
 
 	//w.Write([]byte("Hello"))
@@ -422,6 +431,7 @@ func (arp *ArProxy) handleReload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (arp *ArProxy) Stop() {
+	arp.wa.StopWatch()
 	arp.ln.Stop()
 	<-arp.ch //等待所有完成
 }

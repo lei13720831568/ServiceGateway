@@ -6,8 +6,9 @@ import (
 )
 
 type AppConfigJson struct {
-	DBConnStr string
-	SelfNode  *NodeInfo
+	DBConnStr    string
+	LogDBConnStr string
+	SelfNode     *NodeInfo
 }
 
 type NodeInfo struct {

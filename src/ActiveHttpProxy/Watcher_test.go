@@ -14,13 +14,13 @@ import (
 )
 
 func Test_WatcherGetRoute(t *testing.T) {
-	w := &Watcher{}
-	js, err := w.ReadDBRoute()
-	if err != nil {
-		t.Error(err)
-	} else {
-		t.Log(len(js.Routes))
-	}
+	//	w := &Watcher{}
+	//	js, err := w.ReadDBRoute()
+	//	if err != nil {
+	//		t.Error(err)
+	//	} else {
+	//		t.Log(len(js.Routes))
+	//	}
 }
 
 type teststr struct {

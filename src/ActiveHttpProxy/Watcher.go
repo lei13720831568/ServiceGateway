@@ -26,7 +26,7 @@ func (w *Watcher) StartWatch(p *ArProxy) {
 		select {
 		case <-w.ch:
 			break
-		case <-time.After(30 * time.Second):
+		case <-time.After(10 * time.Minute):
 			j, err := w.reader.Read()
 			if err == nil {
 				p.service_routes.RoadRoute(j)
@@ -36,6 +36,7 @@ func (w *Watcher) StartWatch(p *ArProxy) {
 }
 
 func (w *Watcher) StopWatch() {
+
 	w.ch <- true
 }
 
