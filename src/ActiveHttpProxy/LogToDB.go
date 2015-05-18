@@ -17,6 +17,8 @@ func NewServiceGatewayLogger(connstr string) *ServiceGatewayLogger {
 	ler.saveh = make(chan *ServiceGatewayLog, 9999)
 	ler.ch = make(chan bool)
 	ler.exit = make(chan bool)
+	ler.save = make(chan bool)
+	ler.saveExit = make(chan bool)
 	ler.logs = &ArrayOfServiceGatewayLog{}
 	ler.StartLogToDB()
 	return ler
@@ -28,6 +30,8 @@ type ServiceGatewayLogger struct {
 	ch        chan bool
 	exit      chan bool
 	logs      *ArrayOfServiceGatewayLog
+	save      chan bool
+	saveExit  chan bool
 }
 
 func (p *ServiceGatewayLogger) StartLogToDB() error {
@@ -44,6 +48,9 @@ func (p *ServiceGatewayLogger) StartLogToDB() error {
 				p.logs.saveToDB(p.dbconnstr)
 				p.exit <- true
 				return
+			case <-p.save:
+				p.logs.saveToDB(p.dbconnstr)
+				p.saveExit <- true
 			case lo := <-p.saveh:
 				p.logs.Svs = append(p.logs.Svs, lo)
 				if len(p.logs.Svs) > 200 {
@@ -90,6 +97,11 @@ func (lo *ServiceGatewayLogger) AddLog(ar *ArRoute, requrl string, toUrl string,
 
 }
 
+func (lo *ServiceGatewayLogger) FlushLog() {
+	lo.save <- true
+	<-lo.saveExit
+}
+
 type ArrayOfServiceGatewayLog struct {
 	XMLName xml.Name             `xml:"ArrayOfServiceGatewayLog"`
 	Svs     []*ServiceGatewayLog `xml:"ServiceGatewayLog"`
@@ -107,11 +119,11 @@ func (p *ArrayOfServiceGatewayLog) saveToDB(dbstr string) error {
 	}
 
 	conn, err := sql.Open("odbc", dbstr)
+	defer conn.Close()
 	if err != nil {
 		log.Error("Connecting Error ", err.Error())
 		return err
 	}
-	defer conn.Close()
 
 	_, err = conn.Exec("BatchInsertLog_ServiceGatewayLog ?", string(xmlstr))
 	if err != nil {
@@ -120,6 +132,8 @@ func (p *ArrayOfServiceGatewayLog) saveToDB(dbstr string) error {
 	} else {
 		p.Svs = []*ServiceGatewayLog{}
 	}
+
+	p.Svs = []*ServiceGatewayLog{}
 
 	return nil
 }

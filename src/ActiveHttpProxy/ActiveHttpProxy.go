@@ -46,7 +46,16 @@ type ArRoute struct {
 	SecKey      string
 	MatchMode   string // MatchDir ,MatchFile
 	WaitTimeOut int64
+	Transport   *http.Transport
 	ProxyWorks  *WorkPool.WPool
+}
+
+func (ar *ArRoute) InitTransport() {
+	ar.Transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
+	ar.Transport.Dial = ar.dialTimeout
+}
+func (ar *ArRoute) dialTimeout(network, addr string) (net.Conn, error) {
+	return net.DialTimeout(network, addr, time.Duration(ar.WaitTimeOut)*time.Millisecond)
 }
 
 func (ar *ArRoute) ToJson() string {
@@ -200,6 +209,7 @@ func (arm *ArRouteMap) RoadRoute(newAroute *ArRouteLoad) (result int) {
 				oldroute.SecretType = newroute.SecretType
 				oldroute.TimeOut = newroute.TimeOut
 				oldroute.Ver = newroute.Ver
+				oldroute.WaitTimeOut = newroute.WaitTimeOut
 				//调整连接数
 				err := oldroute.ProxyWorks.SetMax(newroute.MaxConnects)
 				if err == nil {
@@ -223,6 +233,8 @@ func (arm *ArRouteMap) RoadRoute(newAroute *ArRouteLoad) (result int) {
 				log.Error("初始化连接失败 max:", strconv.Itoa(newroute.MaxConnects))
 			}
 
+			newroute.InitTransport()
+
 			//arm.Routes[newroute.ReqUrl] = newroute
 			arm.Routes = append(arm.Routes, newroute)
 
@@ -244,18 +256,13 @@ type ProxyWork struct {
 	Timeout   int64
 }
 
-func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string) *ProxyWork {
+func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string, t *http.Transport) *ProxyWork {
 	pw := &ProxyWork{}
 	pw.w = writer
 	pw.DestUrl = desturl
 	pw.r = req
-	pw.Transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
-	pw.Transport.Dial = pw.dialTimeout
+	pw.Transport = t
 	return pw
-}
-
-func (pw *ProxyWork) dialTimeout(network, addr string) (net.Conn, error) {
-	return net.DialTimeout(network, addr, time.Duration(pw.Timeout)*time.Millisecond)
 }
 
 func (pw *ProxyWork) PHandle() error {
@@ -267,6 +274,7 @@ func (pw *ProxyWork) PHandle() error {
 	pw.r.URL = newUrl
 
 	resp, err := pw.Transport.RoundTrip(pw.r)
+	defer resp.Body.Close()
 	if err != nil {
 		if e, ok := err.(net.Error); ok && e.Timeout() {
 			pw.rspStatus = 408 //超时
@@ -276,7 +284,7 @@ func (pw *ProxyWork) PHandle() error {
 		}
 		return err
 	} else {
-		defer resp.Body.Close()
+
 		for k, v := range resp.Header {
 			for _, vv := range v {
 				pw.w.Header().Add(k, vv)
@@ -398,14 +406,14 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 			desturl = ar.ProxyToUrl
 		}
 
-		pw := NewProxyWork(w, r, desturl)
+		pw := NewProxyWork(w, r, desturl, ar.Transport)
 		pw.Timeout = ar.WaitTimeOut
 		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut))
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprintf(w, "work Error: %v", err)
-			log.Info("route to err:", ar.Name, "$$", rurl, "$$", desturl, "$$", strconv.Itoa(pw.rspStatus))
-			arp.dbLogger.AddLog(ar, rurl, desturl, begintime, time.Now(), pw.rspStatus, err.Error(), rhost)
+			log.Info("route to err:", ar.Name, "$$", rurl, "$$", desturl, "$$", strconv.Itoa(http.StatusServiceUnavailable))
+			arp.dbLogger.AddLog(ar, rurl, desturl, begintime, time.Now(), http.StatusServiceUnavailable, err.Error(), rhost)
 		} else {
 			arp.dbLogger.AddLog(ar, rurl, desturl, begintime, time.Now(), pw.rspStatus, "", rhost)
 		}
@@ -428,6 +436,12 @@ func (arp *ArProxy) handleReload(w http.ResponseWriter, r *http.Request) {
 	rc := arp.service_routes.RoadRoute(Arrl)
 	log.Info("reload routeInfo done. update routes count:", strconv.Itoa(rc))
 	w.Write([]byte("Reload ok"))
+}
+
+func (arp *ArProxy) handleLog(w http.ResponseWriter, r *http.Request) {
+	arp.dbLogger.FlushLog()
+	log.Info("Flush log done.")
+	w.Write([]byte("Flush log ok"))
 }
 
 func (arp *ArProxy) Stop() {
@@ -466,6 +480,7 @@ func (arp *ArProxy) Start() {
 	arp.ln = sl
 	http.HandleFunc("/", arp.handleService)                  //设置访问的路由
 	http.HandleFunc("/Config/ReLoad.html", arp.handleReload) //重新加载
+	http.HandleFunc("/Config/Log.html", arp.handleLog)       //刷新日志
 	server := &http.Server{}
 
 	log.Debug("start http Serve ", arp.port)

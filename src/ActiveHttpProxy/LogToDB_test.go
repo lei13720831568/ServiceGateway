@@ -1,8 +1,8 @@
 package ActiveHttpProxy
 
 import (
-	_ "code.google.com/p/odbc"
-	"database/sql"
+	//_ "code.google.com/p/odbc"
+	//	"database/sql"
 	//	"encoding/xml"
 	//	"fmt"
 	"testing"
@@ -37,11 +37,11 @@ func Test_ServiceDBLog(t *testing.T) {
 		as.Svs = append(as.Svs, l)
 	}
 	dbstr := "driver={sql server};server=192.168.1.100;port=1433;uid=sa;pwd=654321;database=ADC3LogDB"
-	conn, err := sql.Open("odbc", dbstr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = as.saveToDB(conn)
+	//	conn, err := sql.Open("odbc", dbstr)
+	//	if err != nil {
+	//		t.Fatal(err)
+	//	}
+	err := as.saveToDB(dbstr)
 	if err != nil {
 		t.Fatal(err)
 	}

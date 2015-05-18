@@ -12,6 +12,7 @@ type AppConfigJson struct {
 }
 
 type NodeInfo struct {
-	Ip   string
-	Port string
+	Ip          string
+	Port        string
+	ClusterPort string
 }
