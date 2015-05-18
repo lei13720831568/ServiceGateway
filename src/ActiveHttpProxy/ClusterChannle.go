@@ -29,24 +29,24 @@ func (p *ClusterChannle) Reload(req *string, res *string) error {
 
 func (p *ClusterChannle) CallPartner(cmd string) {
 
-	address, err := net.ResolveTCPAddr("tcp", "192.168.1.129:11123")
-	if err != nil {
-		panic(err)
-	}
+	//	address, err := net.ResolveTCPAddr("tcp", "192.168.1.129:11123")
+	//	if err != nil {
+	//		panic(err)
+	//	}
 
-	conn, _ := net.DialTCP("tcp", nil, address)
-	defer conn.Close()
+	//	conn, _ := net.DialTCP("tcp", nil, address)
+	//	defer conn.Close()
 
-	client := rpc.NewClient(conn)
-	defer client.Close()
+	//	client := rpc.NewClient(conn)
+	//	defer client.Close()
 
-	var res string
-	err = client.Call("ClusterChannle.FlushLog", "haha", &res)
-	if err != nil {
-		t.Fatal(err)
-	} else {
-		t.Log(res)
-	}
+	//	var res string
+	//	err = client.Call("ClusterChannle.FlushLog", "haha", &res)
+	//	if err != nil {
+	//		t.Fatal(err)
+	//	} else {
+	//		t.Log(res)
+	//	}
 
 }
 
