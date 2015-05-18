@@ -46,7 +46,16 @@ type ArRoute struct {
 	SecKey      string
 	MatchMode   string // MatchDir ,MatchFile
 	WaitTimeOut int64
+	Transport   *http.Transport
 	ProxyWorks  *WorkPool.WPool
+}
+
+func (ar *ArRoute) InitTransport() {
+	ar.Transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
+	ar.Transport.Dial = ar.dialTimeout
+}
+func (ar *ArRoute) dialTimeout(network, addr string) (net.Conn, error) {
+	return net.DialTimeout(network, addr, time.Duration(ar.WaitTimeOut)*time.Millisecond)
 }
 
 func (ar *ArRoute) ToJson() string {
@@ -200,6 +209,7 @@ func (arm *ArRouteMap) RoadRoute(newAroute *ArRouteLoad) (result int) {
 				oldroute.SecretType = newroute.SecretType
 				oldroute.TimeOut = newroute.TimeOut
 				oldroute.Ver = newroute.Ver
+				oldroute.WaitTimeOut = newroute.WaitTimeOut
 				//调整连接数
 				err := oldroute.ProxyWorks.SetMax(newroute.MaxConnects)
 				if err == nil {
@@ -223,6 +233,8 @@ func (arm *ArRouteMap) RoadRoute(newAroute *ArRouteLoad) (result int) {
 				log.Error("初始化连接失败 max:", strconv.Itoa(newroute.MaxConnects))
 			}
 
+			newroute.InitTransport()
+
 			//arm.Routes[newroute.ReqUrl] = newroute
 			arm.Routes = append(arm.Routes, newroute)
 
@@ -244,18 +256,13 @@ type ProxyWork struct {
 	Timeout   int64
 }
 
-func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string) *ProxyWork {
+func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string, t *http.Transport) *ProxyWork {
 	pw := &ProxyWork{}
 	pw.w = writer
 	pw.DestUrl = desturl
 	pw.r = req
-	pw.Transport = &http.Transport{DisableKeepAlives: true, DisableCompression: false}
-	pw.Transport.Dial = pw.dialTimeout
+	pw.Transport = t
 	return pw
-}
-
-func (pw *ProxyWork) dialTimeout(network, addr string) (net.Conn, error) {
-	return net.DialTimeout(network, addr, time.Duration(pw.Timeout)*time.Millisecond)
 }
 
 func (pw *ProxyWork) PHandle() error {
@@ -399,7 +406,7 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 			desturl = ar.ProxyToUrl
 		}
 
-		pw := NewProxyWork(w, r, desturl)
+		pw := NewProxyWork(w, r, desturl, ar.Transport)
 		pw.Timeout = ar.WaitTimeOut
 		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut))
 		if err != nil {

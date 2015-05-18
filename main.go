@@ -7,7 +7,7 @@ import (
 	//	"fmt"
 	"strings"
 	//	"time"
-	"net/http"
+	//	"net/http"
 	_ "net/http/pprof"
 	"winsvc/service"
 )
@@ -48,9 +48,10 @@ func (p *program) Stop(s service.Service) error {
 func main() {
 	defer log.Close()
 
-	go func() {
-		http.ListenAndServe(":6060", nil)
-	}()
+	//性能监控
+	//	go func() {
+	//		http.ListenAndServe(":6060", nil)
+	//	}()
 
 	svcFlag := flag.String("service", "", "支持命令start, stop, restart, install,uninstall")
 	flag.Parse()
