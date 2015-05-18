@@ -249,7 +249,7 @@ func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string)
 	pw.w = writer
 	pw.DestUrl = desturl
 	pw.r = req
-	pw.Transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
+	pw.Transport = &http.Transport{DisableKeepAlives: true, DisableCompression: false}
 	pw.Transport.Dial = pw.dialTimeout
 	return pw
 }
@@ -267,6 +267,7 @@ func (pw *ProxyWork) PHandle() error {
 	pw.r.URL = newUrl
 
 	resp, err := pw.Transport.RoundTrip(pw.r)
+	defer resp.Body.Close()
 	if err != nil {
 		if e, ok := err.(net.Error); ok && e.Timeout() {
 			pw.rspStatus = 408 //超时
@@ -276,7 +277,7 @@ func (pw *ProxyWork) PHandle() error {
 		}
 		return err
 	} else {
-		defer resp.Body.Close()
+
 		for k, v := range resp.Header {
 			for _, vv := range v {
 				pw.w.Header().Add(k, vv)
@@ -404,8 +405,8 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprintf(w, "work Error: %v", err)
-			log.Info("route to err:", ar.Name, "$$", rurl, "$$", desturl, "$$", strconv.Itoa(pw.rspStatus))
-			arp.dbLogger.AddLog(ar, rurl, desturl, begintime, time.Now(), pw.rspStatus, err.Error(), rhost)
+			log.Info("route to err:", ar.Name, "$$", rurl, "$$", desturl, "$$", strconv.Itoa(http.StatusServiceUnavailable))
+			arp.dbLogger.AddLog(ar, rurl, desturl, begintime, time.Now(), http.StatusServiceUnavailable, err.Error(), rhost)
 		} else {
 			arp.dbLogger.AddLog(ar, rurl, desturl, begintime, time.Now(), pw.rspStatus, "", rhost)
 		}

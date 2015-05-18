@@ -119,11 +119,11 @@ func (p *ArrayOfServiceGatewayLog) saveToDB(dbstr string) error {
 	}
 
 	conn, err := sql.Open("odbc", dbstr)
+	defer conn.Close()
 	if err != nil {
 		log.Error("Connecting Error ", err.Error())
 		return err
 	}
-	defer conn.Close()
 
 	_, err = conn.Exec("BatchInsertLog_ServiceGatewayLog ?", string(xmlstr))
 	if err != nil {
@@ -132,6 +132,8 @@ func (p *ArrayOfServiceGatewayLog) saveToDB(dbstr string) error {
 	} else {
 		p.Svs = []*ServiceGatewayLog{}
 	}
+
+	p.Svs = []*ServiceGatewayLog{}
 
 	return nil
 }
