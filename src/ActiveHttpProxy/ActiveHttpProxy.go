@@ -55,7 +55,16 @@ func (ar *ArRoute) InitTransport() {
 	ar.transport.Dial = ar.dialTimeout
 }
 func (ar *ArRoute) dialTimeout(network, addr string) (net.Conn, error) {
-	return net.DialTimeout(network, addr, time.Duration(ar.WaitTimeOut)*time.Millisecond)
+
+	deadline := time.Now().Add(time.Duration(ar.WaitTimeOut) * time.Millisecond)
+	c, err := net.DialTimeout(network, addr, time.Duration(ar.TimeOut)*time.Millisecond)
+	if err != nil {
+		return nil, err
+	}
+	c.SetDeadline(deadline)
+	return c, nil
+
+	//return net.DialTimeout(network, addr, time.Duration(ar.WaitTimeOut)*time.Millisecond)
 }
 
 func (ar *ArRoute) ToJson() string {
