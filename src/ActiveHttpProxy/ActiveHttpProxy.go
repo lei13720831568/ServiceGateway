@@ -46,13 +46,13 @@ type ArRoute struct {
 	SecKey      string
 	MatchMode   string // MatchDir ,MatchFile
 	WaitTimeOut int64
-	Transport   *http.Transport
+	transport   *http.Transport
 	ProxyWorks  *WorkPool.WPool
 }
 
 func (ar *ArRoute) InitTransport() {
-	ar.Transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
-	ar.Transport.Dial = ar.dialTimeout
+	ar.transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
+	ar.transport.Dial = ar.dialTimeout
 }
 func (ar *ArRoute) dialTimeout(network, addr string) (net.Conn, error) {
 	return net.DialTimeout(network, addr, time.Duration(ar.WaitTimeOut)*time.Millisecond)
@@ -253,7 +253,7 @@ type ProxyWork struct {
 	Transport *http.Transport
 	DestUrl   string
 	rspStatus int
-	Timeout   int64
+	//Timeout   int64
 }
 
 func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string, t *http.Transport) *ProxyWork {
@@ -406,9 +406,9 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 			desturl = ar.ProxyToUrl
 		}
 
-		pw := NewProxyWork(w, r, desturl, ar.Transport)
-		pw.Timeout = ar.WaitTimeOut
-		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut))
+		pw := NewProxyWork(w, r, desturl, ar.transport)
+		//pw.Timeout = ar.WaitTimeOut
+		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut)*time.Millisecond)
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprintf(w, "work Error: %v", err)
