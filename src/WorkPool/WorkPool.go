@@ -95,10 +95,7 @@ func (pw *WPool) AsyncPutWork(w Worker, waitTime time.Duration, c chan<- error) 
 
 	go func() {
 		err := pw.PutWork(w, waitTime)
-		if c != nil {
-			c <- err
-		}
-
+		c <- err
 	}()
 
 }

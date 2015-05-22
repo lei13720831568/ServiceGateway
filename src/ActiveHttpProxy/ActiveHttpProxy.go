@@ -453,6 +453,14 @@ func (arp *ArProxy) handleLog(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Flush log ok"))
 }
 
+func (arp *ArProxy) handleStat(w http.ResponseWriter, r *http.Request) {
+
+	for _, ar := range arp.service_routes.Routes {
+		fmt.Fprintln(w, ar, ",", ar.ProxyWorks.GetStat())
+	}
+
+}
+
 func (arp *ArProxy) Stop() {
 	arp.wa.StopWatch()
 	arp.ln.Stop()
@@ -490,6 +498,7 @@ func (arp *ArProxy) Start() {
 	http.HandleFunc("/", arp.handleService)                  //设置访问的路由
 	http.HandleFunc("/Config/ReLoad.html", arp.handleReload) //重新加载
 	http.HandleFunc("/Config/Log.html", arp.handleLog)       //刷新日志
+	http.HandleFunc("/Config/Stat.html", arp.handleStat)     //刷新日志
 	server := &http.Server{}
 
 	log.Debug("start http Serve ", arp.port)
