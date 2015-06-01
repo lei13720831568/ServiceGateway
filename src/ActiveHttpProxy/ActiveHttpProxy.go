@@ -138,7 +138,7 @@ func (arm *ArRouteMap) MatchRouteByDir(url string) (*ArRoute, bool) {
 func (arm *ArRouteMap) FindRouteByReqUrl(r string) (*ArRoute, int, bool) {
 
 	for i, arr := range arm.Routes {
-		if arr.ReqUrl == r {
+		if strings.EqualFold(arr.ReqUrl, r) {
 			return arr, i, true
 		}
 	}
@@ -309,6 +309,7 @@ func (pw *ProxyWork) PHandle() error {
 
 type ArProxy struct {
 	port           string
+	Host           string
 	service_queue  map[int]chan byte
 	service_routes *ArRouteMap
 	wa             *Watcher
@@ -317,7 +318,7 @@ type ArProxy struct {
 	dbLogger       *ServiceGatewayLogger
 }
 
-func NewArProxy(port string, r RouteReader, dlogger *ServiceGatewayLogger) *ArProxy {
+func NewArProxy(port string, r RouteReader, dlogger *ServiceGatewayLogger, host string) *ArProxy {
 	arp := &ArProxy{}
 	arp.port = port
 	arp.service_queue = make(map[int]chan byte)
@@ -325,6 +326,8 @@ func NewArProxy(port string, r RouteReader, dlogger *ServiceGatewayLogger) *ArPr
 	arp.wa = NewWatcher(r)
 	arp.ch = make(chan bool)
 	arp.dbLogger = dlogger
+	arp.Host = host
+
 	return arp
 }
 
@@ -392,7 +395,7 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 
 	log.Debug("receive request ", r.URL.Path)
 	rurl := r.URL.Path
-	rhost := r.URL.Host
+	rhost := arp.Host
 	begintime := time.Now()
 
 	ar, ok := arp.service_routes.MatchRoute(r.URL.Path)
