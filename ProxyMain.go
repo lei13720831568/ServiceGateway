@@ -31,7 +31,7 @@ func (p *program) run() error {
 	r := ActiveHttpProxy.NewReaderFromDB(appconfig.DBConnStr)
 	dl := ActiveHttpProxy.NewServiceGatewayLogger(appconfig.LogDBConnStr)
 
-	arp := ActiveHttpProxy.NewArProxy(appconfig.SelfNode.Port, r, dl)
+	arp := ActiveHttpProxy.NewArProxy(appconfig.SelfNode.Port, r, dl, appconfig.SelfNode.Ip)
 	arp.Start()
 
 	for {

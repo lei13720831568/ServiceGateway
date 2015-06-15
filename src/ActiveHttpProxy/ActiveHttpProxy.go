@@ -46,16 +46,25 @@ type ArRoute struct {
 	SecKey      string
 	MatchMode   string // MatchDir ,MatchFile
 	WaitTimeOut int64
-	Transport   *http.Transport
+	transport   *http.Transport
 	ProxyWorks  *WorkPool.WPool
 }
 
 func (ar *ArRoute) InitTransport() {
-	ar.Transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
-	ar.Transport.Dial = ar.dialTimeout
+	ar.transport = &http.Transport{DisableKeepAlives: false, DisableCompression: false}
+	ar.transport.Dial = ar.dialTimeout
 }
 func (ar *ArRoute) dialTimeout(network, addr string) (net.Conn, error) {
-	return net.DialTimeout(network, addr, time.Duration(ar.WaitTimeOut)*time.Millisecond)
+
+	deadline := time.Now().Add(time.Duration(ar.WaitTimeOut) * time.Millisecond)
+	c, err := net.DialTimeout(network, addr, time.Duration(ar.TimeOut)*time.Millisecond)
+	if err != nil {
+		return nil, err
+	}
+	c.SetDeadline(deadline)
+	return c, nil
+
+	//return net.DialTimeout(network, addr, time.Duration(ar.WaitTimeOut)*time.Millisecond)
 }
 
 func (ar *ArRoute) ToJson() string {
@@ -129,7 +138,7 @@ func (arm *ArRouteMap) MatchRouteByDir(url string) (*ArRoute, bool) {
 func (arm *ArRouteMap) FindRouteByReqUrl(r string) (*ArRoute, int, bool) {
 
 	for i, arr := range arm.Routes {
-		if arr.ReqUrl == r {
+		if strings.EqualFold(arr.ReqUrl, r) {
 			return arr, i, true
 		}
 	}
@@ -253,7 +262,7 @@ type ProxyWork struct {
 	Transport *http.Transport
 	DestUrl   string
 	rspStatus int
-	Timeout   int64
+	//Timeout   int64
 }
 
 func NewProxyWork(writer http.ResponseWriter, req *http.Request, desturl string, t *http.Transport) *ProxyWork {
@@ -300,6 +309,7 @@ func (pw *ProxyWork) PHandle() error {
 
 type ArProxy struct {
 	port           string
+	Host           string
 	service_queue  map[int]chan byte
 	service_routes *ArRouteMap
 	wa             *Watcher
@@ -308,7 +318,7 @@ type ArProxy struct {
 	dbLogger       *ServiceGatewayLogger
 }
 
-func NewArProxy(port string, r RouteReader, dlogger *ServiceGatewayLogger) *ArProxy {
+func NewArProxy(port string, r RouteReader, dlogger *ServiceGatewayLogger, host string) *ArProxy {
 	arp := &ArProxy{}
 	arp.port = port
 	arp.service_queue = make(map[int]chan byte)
@@ -316,6 +326,8 @@ func NewArProxy(port string, r RouteReader, dlogger *ServiceGatewayLogger) *ArPr
 	arp.wa = NewWatcher(r)
 	arp.ch = make(chan bool)
 	arp.dbLogger = dlogger
+	arp.Host = host
+
 	return arp
 }
 
@@ -383,7 +395,7 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 
 	log.Debug("receive request ", r.URL.Path)
 	rurl := r.URL.Path
-	rhost := r.URL.Host
+	rhost := arp.Host
 	begintime := time.Now()
 
 	ar, ok := arp.service_routes.MatchRoute(r.URL.Path)
@@ -406,9 +418,9 @@ func (arp *ArProxy) handleService(w http.ResponseWriter, r *http.Request) {
 			desturl = ar.ProxyToUrl
 		}
 
-		pw := NewProxyWork(w, r, desturl, ar.Transport)
-		pw.Timeout = ar.WaitTimeOut
-		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut))
+		pw := NewProxyWork(w, r, desturl, ar.transport)
+		//pw.Timeout = ar.WaitTimeOut
+		err = ar.ProxyWorks.PutWork(pw, time.Duration(ar.TimeOut)*time.Millisecond)
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprintf(w, "work Error: %v", err)
@@ -442,6 +454,14 @@ func (arp *ArProxy) handleLog(w http.ResponseWriter, r *http.Request) {
 	arp.dbLogger.FlushLog()
 	log.Info("Flush log done.")
 	w.Write([]byte("Flush log ok"))
+}
+
+func (arp *ArProxy) handleStat(w http.ResponseWriter, r *http.Request) {
+
+	for _, ar := range arp.service_routes.Routes {
+		fmt.Fprintln(w, ar, ",", ar.ProxyWorks.GetStat())
+	}
+
 }
 
 func (arp *ArProxy) Stop() {
@@ -481,6 +501,7 @@ func (arp *ArProxy) Start() {
 	http.HandleFunc("/", arp.handleService)                  //设置访问的路由
 	http.HandleFunc("/Config/ReLoad.html", arp.handleReload) //重新加载
 	http.HandleFunc("/Config/Log.html", arp.handleLog)       //刷新日志
+	http.HandleFunc("/Config/Stat.html", arp.handleStat)     //刷新日志
 	server := &http.Server{}
 
 	log.Debug("start http Serve ", arp.port)

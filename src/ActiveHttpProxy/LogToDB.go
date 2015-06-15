@@ -74,6 +74,7 @@ func (p *ServiceGatewayLogger) StopLogToDB() {
 
 func (lo *ServiceGatewayLogger) AddLog(ar *ArRoute, requrl string, toUrl string, begin time.Time, end time.Time, rspStatus int, errorinfo string, host string) {
 	p := &ServiceGatewayLog{}
+	p.Host = host
 	p.ReqUrl = requrl
 	if ar != nil {
 		p.PublishID = ar.PublishID
@@ -125,7 +126,7 @@ func (p *ArrayOfServiceGatewayLog) saveToDB(dbstr string) error {
 		return err
 	}
 
-	_, err = conn.Exec("BatchInsertLog_ServiceGatewayLog ?", string(xmlstr))
+	_, err = conn.Exec("exec BatchInsertLog_ServiceGatewayLog ?", string(xmlstr)) //sql 2008 不能增加 exec； sql 2005 必须加exec
 	if err != nil {
 		log.Error("conn exec Error", err.Error())
 		return err
